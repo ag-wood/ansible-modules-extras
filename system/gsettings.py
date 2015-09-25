@@ -88,54 +88,50 @@ except ImportError:
 else:
     HAS_GIO = True
 
-UID = 1
 ENV_DBUS = 'DBUS_SESSION_BUS_ADDRESS'
 SESSION_MANAGERS = [
     'gnome-session', 'mate-session', 'xfce4-session',
     'cinnamon-session', 'icewm-session', 'openbox-session']
 
-change_msgs = []
-
 
 class Gsettings(object):
     def __init__(self):
         def proc_name(pid):
-            '''Return process name of process pid'''
+            """Return process name of process pid"""
             try:
                 for attr in open("/proc/{0}/status".format(pid), 'r'):
-                    if 'Name' in attr:
+                    if attr.startswith('Name:'):
                         return attr.split(':')[1].strip()
                 return None
             except:
                 return None
 
         def proc_owner(pid):
-            '''Return username of UID of process pid'''
+            """Return username of UID of process pid"""
+            UID = 1
             for ln in open('/proc/{0}/status'.format(pid), 'r'):
                 if ln.startswith('Uid:'):
-                    uid = int(ln.split()[UID])
-                    return pwd.getpwuid(uid).pw_name
+                    return int(ln.split()[UID])
 
         def proc_environ(pid, varname=""):
-            '''Return process environment variable of process pid'''
+            """Return process environment variable of process pid"""
             proc_env = open("/proc/{0}/environ".format(pid), 'r')
-            env = proc_env.readline()
+            env = proc_env.read()
             for env_var in env.split('\x00'):
                 if varname != "":
                     prefix = "{0}=".format(varname)
                     if env_var.startswith(prefix):
-                        return env_var.replace(prefix, '')
+                        return env_var[len(prefix):]
 
         def bus_address(pid):
-            '''Return the bus address for the specified process'''
+            """Return the bus address for the specified process"""
             return proc_environ(pid, ENV_DBUS)
 
         def new_session():
-            '''Create a new dbus session'''
+            """Create a new dbus session"""
             dbus_process = subprocess.Popen('dbus-launch', stdout=subprocess.PIPE)
             for env_string in dbus_process.stdout.readlines():
-                env_var = env_string[0:env_string.index('=')]
-                env_value = env_string[env_string.index('=')+1:]
+                env_var, env_value = env_string.split('=', 1)
                 os.environ[env_var] = env_value
             return os.environ['DBUS_SESSION_BUS_PID'].replace('\n', '')
 
@@ -148,7 +144,7 @@ class Gsettings(object):
                 if proc_name(procfile) in SESSION_MANAGERS:
                     self.session_pid = procfile
 
-        osuser = pwd.getpwuid(os.getuid()).pw_name
+        osuser = os.getuid()
         if self.session_pid != -1:
             sessionuser = proc_owner(self.session_pid)
         else:
@@ -164,27 +160,40 @@ class Gsettings(object):
         self.bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
 
     def get_value(self, schema, key):
-        ''' Read the value of the specified key '''
+        """ Read the value of the specified key """
         if ':' in schema:
-            path = schema.split(':')[1]
-            schema = schema.split(':')[0]
+            schema, path = schema.split(':', 1)
         else:
             path = None
-        self.settings = Gio.Settings(schema=schema, path=path)
-        return self.settings.get_value(key)
+
+        # Gio.Settings does not fail gracefully, making
+        # use of abort when an exception occurs.  Thus,
+        # careful checking of values is done before
+        # commiting to get_value.
+        if schema in Gio.Settings.list_schemas():
+            settings = Gio.Settings(schema=schema, path=path)
+            if key in Gio.Settings.list_keys(settings):
+                return settings.get_value(key)
+            else:
+                module.fail_json(rc=1, msg='{0} is not valid in the schema: {1}'.format(key, schema))
+        else:
+            module.fail_json(rc=1, msg='{0} is not a valid schema'.format(schema))
 
     def set_value(self, schema, key, value):
-        ''' Write a value to the specified key '''
+        """ Write a value to the specified key """
         if ':' in schema:
             path = schema.split(':')[1]
             schema = schema.split(':')[0]
         else:
             path = None
-        self.settings = Gio.Settings(schema=schema, path=path)
-        self.settings.set_value(key, value)
 
-    def __del__(self):
-        ''' Class cleanup '''
+        # No need to check values passed as they were
+        # already checked in the get_value function.
+        settings = Gio.Settings(schema=schema, path=path)
+        settings.set_value(key, value)
+
+    def cleanup(self):
+        """ Class cleanup """
         if self._cleanup:
             # Stop the dbus daemon if one was started.
             time.sleep(1)
@@ -200,6 +209,8 @@ def main():
     )
 
     has_changed = False
+    change_msgs = []
+
     if not HAS_GIO:
         module.fail_json(rc=1, msg='The python PyGObject module is a required dependency.')
 
@@ -218,10 +229,14 @@ def main():
             if module.check_mode:
                 change_msgs.append('{0}/{1} -> current: {2} ; proposed new: {3}'.format(schema, key, old_value, value))
             else:
-                new_value = GLib.Variant(setting_type, value)
+                try:
+                    new_value = GLib.Variant(setting_type, value)
+                except Exception as err:
+                    module.fail_json(rc=1, msg='The value provided is invalid: {1}'.format(err))
+
                 gs.set_value(schema, key, new_value)
                 change_msgs.append('{0}/{1} -> old: {2} ; new: {3}'.format(schema, key, old_value, value))
-    gs = None
+    gs.cleanup()
     module.exit_json(rc=0, changed=has_changed, msg=change_msgs)
 
 from ansible.module_utils.basic import *
