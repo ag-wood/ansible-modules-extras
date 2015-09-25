@@ -26,7 +26,7 @@ description:
 version_added: "1.9"
 notes:
     - become and become_user must be used to specify the target configuration set.
-requirements: [ "PyGObjects"]
+requirements: [ "PyGObject"]
 options:
     settings:
         description:
@@ -54,8 +54,11 @@ EXAMPLES = '''
       # Clean up the 'Dash' search widget
       - schema: com.canonical.Unity.Lenses
         key: disabled-scopes
-        value: ['more_suggestions-amazon.scope', 'more_suggestions-u1ms.scope', 'more_suggestions-populartracks.scope', 'music-musicstore.scope', 'more_suggestions-ebay.scope', 'more_suggestions-ubuntushop.scope', 'more_suggestions-skimlinks.scope']
-      # Power button invokes shutdown.  
+        value: ['more_suggestions-amazon.scope', 'more_suggestions-u1ms.scope',
+                'more_suggestions-populartracks.scope', 'music-musicstore.scope',
+                'more_suggestions-ebay.scope', 'more_suggestions-ubuntushop.scope',
+                'more_suggestions-skimlinks.scope']
+      # Power button invokes shutdown.
       - schema: org.gnome.settings-daemon.plugins.power
         key: button-power
         value: 'shutdown'
@@ -81,24 +84,25 @@ import subprocess
 try:
     from gi.repository import Gio, GLib
 except ImportError:
-    HAS_GIO=False
+    HAS_GIO = False
 else:
-    HAS_GIO=True
+    HAS_GIO = True
 
-UID  = 1
+UID = 1
 ENV_DBUS = 'DBUS_SESSION_BUS_ADDRESS'
 SESSION_MANAGERS = [
     'gnome-session', 'mate-session', 'xfce4-session',
-    'cinnamon-session','icewm-session', 'openbox-session' ]
-    
+    'cinnamon-session', 'icewm-session', 'openbox-session']
+
 change_msgs = []
+
 
 class Gsettings(object):
     def __init__(self):
         def proc_name(pid):
             '''Return process name of process pid'''
             try:
-                for attr in open("/proc/{0}/status".format(pid),'r'):
+                for attr in open("/proc/{0}/status".format(pid), 'r'):
                     if 'Name' in attr:
                         return attr.split(':')[1].strip()
                 return None
@@ -107,14 +111,14 @@ class Gsettings(object):
 
         def proc_owner(pid):
             '''Return username of UID of process pid'''
-            for ln in open('/proc/{0}/status'.format(pid),'r'):
+            for ln in open('/proc/{0}/status'.format(pid), 'r'):
                 if ln.startswith('Uid:'):
                     uid = int(ln.split()[UID])
                     return pwd.getpwuid(uid).pw_name
 
         def proc_environ(pid, varname=""):
             '''Return process environment variable of process pid'''
-            proc_env = open("/proc/{0}/environ".format(pid),'r')
+            proc_env = open("/proc/{0}/environ".format(pid), 'r')
             env = proc_env.readline()
             for env_var in env.split('\x00'):
                 if varname != "":
@@ -133,7 +137,7 @@ class Gsettings(object):
                 env_var = env_string[0:env_string.index('=')]
                 env_value = env_string[env_string.index('=')+1:]
                 os.environ[env_var] = env_value
-            return os.environ['DBUS_SESSION_BUS_PID'].replace('\n','')
+            return os.environ['DBUS_SESSION_BUS_PID'].replace('\n', '')
 
         # Determine the session pid.
         self.session_pid = -1
@@ -145,13 +149,13 @@ class Gsettings(object):
                     self.session_pid = procfile
 
         osuser = pwd.getpwuid(os.getuid()).pw_name
-        if self.session_pid <> -1:
+        if self.session_pid != -1:
             sessionuser = proc_owner(self.session_pid)
         else:
             sessionuser = osuser
 
         # Setup the environment and connect to the bus.
-        if self.session_pid <> -1 and osuser == sessionuser:
+        if self.session_pid != -1 and osuser == sessionuser:
             os.environ[ENV_DBUS] = bus_address(self.session_pid)
         else:
             self.session_pid = new_session()
@@ -182,16 +186,17 @@ class Gsettings(object):
     def __del__(self):
         ''' Class cleanup '''
         if self._cleanup:
-           # Stop the dbus daemon if one was started.
-           time.sleep(1)
-           os.kill(int(self.session_pid), signal.SIGTERM)
+            # Stop the dbus daemon if one was started.
+            time.sleep(1)
+            os.kill(int(self.session_pid), signal.SIGTERM)
+
 
 def main():
     module = AnsibleModule(
-        argument_spec = dict(
-            settings = dict(required=True, type='list')
+        argument_spec=dict(
+            settings=dict(required=True, type='list')
         ),
-        supports_check_mode = True,
+        supports_check_mode=True,
     )
 
     has_changed = False
@@ -222,4 +227,3 @@ def main():
 from ansible.module_utils.basic import *
 if __name__ == '__main__':
     main()
-
