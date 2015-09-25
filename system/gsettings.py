@@ -222,7 +222,7 @@ def main():
         value = gsetting['value']
         try:
             old_setting = gs.get_value(schema, key)
-        except ValueError as err:
+        except ValueError, err:
             module.fail_json(rc=1, msg=err.message)
 
         setting_type = old_setting.get_type_string()
@@ -235,7 +235,7 @@ def main():
             else:
                 try:
                     new_value = GLib.Variant(setting_type, value)
-                except Exception as err:
+                except Exception, err:
                     module.fail_json(rc=1, msg='The value provided is invalid: {1}'.format(err))
 
                 gs.set_value(schema, key, new_value)
