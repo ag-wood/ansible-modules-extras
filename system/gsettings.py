@@ -175,9 +175,9 @@ class Gsettings(object):
             if key in Gio.Settings.list_keys(settings):
                 return settings.get_value(key)
             else:
-                module.fail_json(rc=1, msg='{0} is not valid in the schema: {1}'.format(key, schema))
+                raise ValueError('{0} is not valid in the schema: {1}'.format(key, schema))
         else:
-            module.fail_json(rc=1, msg='{0} is not a valid schema'.format(schema))
+            raise ValueError('{0} is not a valid schema'.format(schema))
 
     def set_value(self, schema, key, value):
         """ Write a value to the specified key """
@@ -220,7 +220,11 @@ def main():
         schema = gsetting['schema']
         key = gsetting['key']
         value = gsetting['value']
-        old_setting = gs.get_value(schema, key)
+        try:
+            old_setting = gs.get_value(schema, key)
+        except ValueError as err:
+            module.fail_json(rc=1, msg=err.message)
+
         setting_type = old_setting.get_type_string()
 
         old_value = old_setting.unpack()
