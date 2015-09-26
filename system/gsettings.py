@@ -93,48 +93,47 @@ SESSION_MANAGERS = [
     'gnome-session', 'mate-session', 'xfce4-session',
     'cinnamon-session', 'icewm-session', 'openbox-session']
 
+def proc_name(pid):
+    """Return process name of process pid"""
+    try:
+        for attr in open("/proc/{0}/status".format(pid), 'r'):
+            if attr.startswith('Name:'):
+                return attr.split(':')[1].strip()
+        return None
+    except:
+        return None
+
+def proc_owner(pid):
+    """Return username of UID of process pid"""
+    for ln in open('/proc/{0}/status'.format(pid), 'r'):
+        if ln.startswith('Uid:'):
+            return int(ln.split()[1])
+
+def proc_environ(pid, varname=""):
+    """Return process environment variable of process pid"""
+    proc_env = open("/proc/{0}/environ".format(pid), 'r')
+    env = proc_env.read()
+    for env_var in env.split('\x00'):
+        if varname != "":
+            prefix = "{0}=".format(varname)
+            if env_var.startswith(prefix):
+                return env_var[len(prefix):]
+
+def bus_address(pid):
+    """Return the bus address for the specified process"""
+    return proc_environ(pid, ENV_DBUS)
+
+def new_session():
+    """Create a new dbus session"""
+    dbus_process = subprocess.Popen('dbus-launch', stdout=subprocess.PIPE)
+    for env_string in dbus_process.stdout.readlines():
+        env_var, env_value = env_string.split('=', 1)
+        os.environ[env_var] = env_value
+    return os.environ['DBUS_SESSION_BUS_PID'].replace('\n', '')
+
 
 class Gsettings(object):
     def __init__(self):
-        def proc_name(pid):
-            """Return process name of process pid"""
-            try:
-                for attr in open("/proc/{0}/status".format(pid), 'r'):
-                    if attr.startswith('Name:'):
-                        return attr.split(':')[1].strip()
-                return None
-            except:
-                return None
-
-        def proc_owner(pid):
-            """Return username of UID of process pid"""
-            UID = 1
-            for ln in open('/proc/{0}/status'.format(pid), 'r'):
-                if ln.startswith('Uid:'):
-                    return int(ln.split()[UID])
-
-        def proc_environ(pid, varname=""):
-            """Return process environment variable of process pid"""
-            proc_env = open("/proc/{0}/environ".format(pid), 'r')
-            env = proc_env.read()
-            for env_var in env.split('\x00'):
-                if varname != "":
-                    prefix = "{0}=".format(varname)
-                    if env_var.startswith(prefix):
-                        return env_var[len(prefix):]
-
-        def bus_address(pid):
-            """Return the bus address for the specified process"""
-            return proc_environ(pid, ENV_DBUS)
-
-        def new_session():
-            """Create a new dbus session"""
-            dbus_process = subprocess.Popen('dbus-launch', stdout=subprocess.PIPE)
-            for env_string in dbus_process.stdout.readlines():
-                env_var, env_value = env_string.split('=', 1)
-                os.environ[env_var] = env_value
-            return os.environ['DBUS_SESSION_BUS_PID'].replace('\n', '')
-
         # Determine the session pid.
         self.session_pid = -1
         self._cleanup = False
@@ -170,20 +169,17 @@ class Gsettings(object):
         # use of abort when an exception occurs.  Thus,
         # careful checking of values is done before
         # commiting to get_value.
-        if schema in Gio.Settings.list_schemas():
-            settings = Gio.Settings(schema=schema, path=path)
-            if key in Gio.Settings.list_keys(settings):
-                return settings.get_value(key)
-            else:
-                raise ValueError('{0} is not valid in the schema: {1}'.format(key, schema))
-        else:
+        if schema not in Gio.Settings.list_schemas():
             raise ValueError('{0} is not a valid schema'.format(schema))
+        settings = Gio.Settings(schema=schema, path=path)
+        if key not in Gio.Settings.list_keys(settings):
+            raise ValueError('{0} is not valid in the schema: {1}'.format(key, schema))
+        return settings.get_value(key)
 
     def set_value(self, schema, key, value):
         """ Write a value to the specified key """
         if ':' in schema:
-            path = schema.split(':')[1]
-            schema = schema.split(':')[0]
+            schema, path = schema.split(':', 1)
         else:
             path = None
 
