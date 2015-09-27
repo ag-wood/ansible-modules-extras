@@ -160,18 +160,26 @@ class Gsettings(object):
 
     def get_value(self, schema, key):
         """ Read the value of the specified key """
+        # ':' implies relocatable schemas
         if ':' in schema:
             schema, path = schema.split(':', 1)
+            schemas = Gio.Settings.list_relocatable_schemas()
         else:
             path = None
+            schemas = Gio.Settings.list_schemas()
 
         # Gio.Settings does not fail gracefully, making
         # use of abort when an exception occurs.  Thus,
         # careful checking of values is done before
         # commiting to get_value.
-        if schema not in Gio.Settings.list_schemas():
+        if schema not in schemas:
             raise ValueError('{0} is not a valid schema'.format(schema))
-        settings = Gio.Settings(schema=schema, path=path)
+
+        if path is None:
+            settings = Gio.Settings(schema=schema, path=path)
+        else:
+            settings = Gio.Settings.new_with_path(schema_id=schema, path=path)
+
         if key not in Gio.Settings.list_keys(settings):
             raise ValueError('{0} is not valid in the schema: {1}'.format(key, schema))
         return settings.get_value(key)
@@ -242,3 +250,4 @@ def main():
 from ansible.module_utils.basic import *
 if __name__ == '__main__':
     main()
+
