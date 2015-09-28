@@ -219,9 +219,9 @@ def main():
         module.fail_json(rc=1, msg='The python PyGObject module is a required dependency.')
 
     # Prevent stack trace if the runtime directory is not writable.
-    work_dir = '{0}/.cache/dconf'.format(os.path.expanduser('~'))
+    work_dir = os.path.expanduser('~/.cache/dconf')
     if not os.access(work_dir, os.W_OK):
-        module.fail_json(rc=1, msg='Unable to persist changes - please ensure {} is writable.'.format(work_dir))
+        module.fail_json(rc=1, msg='Unable to persist changes - please ensure {0} exists and is writable.'.format(work_dir))
 
     gs = Gsettings()
     gsettings = module.params['settings']
